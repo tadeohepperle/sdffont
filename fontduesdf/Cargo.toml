@@ -1,0 +1,21 @@
+[package]
+name = "fontduesdf"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ahash = "0.8.11"
+etagere = "0.2.15"
+fontdue = "0.9.2"
+sdfer = { version = "0.2.1" }
+ttf-parser = "0.21.1"
+
+[lib]
+name = "fontduesdf"
+crate-type = ["staticlib"]
+
+[profile.release]
+lto = true        # does a lot for binary size
+codegen-units = 1
+# panic = "abort"   # does not do much for binary size
+opt-level = 3 # does not do much for binary size
