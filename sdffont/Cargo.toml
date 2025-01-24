@@ -1,5 +1,5 @@
 [package]
-name = "fontduesdf"
+name = "sdffont"
 version = "0.1.0"
 edition = "2024"
 
@@ -11,8 +11,8 @@ sdfer = { version = "0.2.1" }
 ttf-parser = "0.21.1"
 
 [lib]
-name = "fontduesdf"
-crate-type = ["staticlib"]
+name = "sdffont"
+crate-type = ["cdylib"]
 
 [profile.release]
 lto = true        # does a lot for binary size

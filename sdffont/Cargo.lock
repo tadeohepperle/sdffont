@@ -63,17 +63,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fontduesdf"
-version = "0.1.0"
-dependencies = [
- "ahash",
- "etagere",
- "fontdue",
- "sdfer",
- "ttf-parser",
-]
-
-[[package]]
 name = "getrandom"
 version = "0.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -138,6 +127,17 @@ name = "sdfer"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "27fd75ebc7c721a70d202c7cdd2beb108bbe5dfaaea68e06aff4de2f4cc240ed"
+
+[[package]]
+name = "sdffont"
+version = "0.1.0"
+dependencies = [
+ "ahash",
+ "etagere",
+ "fontdue",
+ "sdfer",
+ "ttf-parser",
+]
 
 [[package]]
 name = "svg_fmt"

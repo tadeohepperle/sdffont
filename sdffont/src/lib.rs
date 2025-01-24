@@ -1,13 +1,3 @@
-// #[unsafe(no_mangle)]
-// pub fn font_load(bytes: RawSlice, scale: f32, font_ptr: *const Font) -> RawString {
-//     let settings = fontdue::FontSettings {
-//         collection_index: 1,
-//         scale,
-//         load_substitutions: false,
-//     };
-//     let font = fontdue::Font::from_bytes(bytes.typed::<u8>(), settings);
-// }
-
 use std::collections::hash_map::Entry;
 use ttf_parser::gpos::{PairAdjustment, PositioningSubtable};
 
@@ -169,6 +159,7 @@ pub struct SdfFontSettings {
     font_size: u32,
     /// padding to each of the 4 dimensions for each glyph. A value of font_size / 8 is recommended.
     pad_size: u32,
+    // if sdf_radius is 0, no sdf is computed at all and the original rasterized greyimage is put into the atlas
     sdf_radius: f32,
     /// should be a power of 2
     atlas_width: u32,
@@ -219,7 +210,7 @@ impl SdfFont {
             settings.atlas_height as i32,
         ));
         let atlas_image: Vec<u8> = vec![0; (settings.atlas_width * settings.atlas_height) as usize];
-
+        dbg!(line_metrics);
         // font.horizontal_kern_indexed(left, right, px)
         let mut font = SdfFont {
             _font_bytes: font_bytes, // just to ensure that they live as long as the face.
@@ -252,26 +243,16 @@ impl SdfFont {
         match self.glyphs.entry(ch) {
             Entry::Occupied(occupied) => return occupied.get().info,
             Entry::Vacant(vacant_entry) => {
+                let is_white_space = ch.is_whitespace();
                 if !self.font.has_glyph(ch) {
                     // if glyph not in font, mark this in the hashmap and return NotContained.
-                    info = UNKNOWN_GLYPH;
-                    vacant_entry.insert(SdfGlyph {
-                        info,
-                        _alloc_id: None,
-                    });
-                    return info;
-                }
-                // add the glyph:
-                let (fontdue_metrics, rasterized_buf) =
-                    self.font.rasterize(ch, self.settings.font_size as f32);
-                if ch.is_whitespace() {
-                    let info = GlyphInfo {
-                        kind: GlyphKind::Whitespace,
-                        metrics: GlyphMetrics {
-                            advance: fontdue_metrics.advance_width,
-                            ..Default::default()
+                    info = GlyphInfo {
+                        kind: if is_white_space {
+                            GlyphKind::Whitespace
+                        } else {
+                            GlyphKind::NotContained
                         },
-                        uv: Aabb::default(),
+                        ..UNKNOWN_GLYPH
                     };
                     vacant_entry.insert(SdfGlyph {
                         info,
@@ -279,77 +260,105 @@ impl SdfFont {
                     });
                     return info;
                 }
-
-                let glyph_bounds = fontdue_metrics.bounds;
+                // add the glyph:
+                let (f_metrics, rasterized_buf) =
+                    self.font.rasterize(ch, self.settings.font_size as f32);
+                if is_white_space {
+                    let info = GlyphInfo {
+                        kind: GlyphKind::Whitespace,
+                        advance: f_metrics.advance_width,
+                        ..Default::default()
+                    };
+                    vacant_entry.insert(SdfGlyph {
+                        info,
+                        _alloc_id: None,
+                    });
+                    return info;
+                }
                 let pad = self.settings.pad_size;
 
                 // add the padding here, because sdf requires larger quads than usual, important for e.g. text shadow
-                // should not have influence on layout algorithm.
-                let metrics = GlyphMetrics {
-                    xmin: glyph_bounds.xmin - pad as f32,
-                    ymin: glyph_bounds.ymin - pad as f32,
-                    width: glyph_bounds.width + (2 * pad) as f32,
-                    height: glyph_bounds.height + (2 * pad) as f32,
-                    advance: fontdue_metrics.advance_width,
-                };
 
-                let mut gray_for_sdfer = sdfer::Image2d::<sdfer::Unorm8>::from_storage(
-                    fontdue_metrics.width,
-                    fontdue_metrics.height,
-                    rasterized_buf
-                        .into_iter()
-                        .map(|e| sdfer::Unorm8::from_bits(e))
-                        .collect::<Vec<sdfer::Unorm8>>(),
-                );
-                // println!("generated sdf for {ch}");
-                let (esdfer_sdf_img, reuse) = sdfer::esdt::glyph_to_sdf(
-                    &mut gray_for_sdfer,
-                    sdfer::esdt::Params {
-                        pad: self.settings.pad_size as usize,
-                        radius: self.settings.sdf_radius,
-                        cutoff: 0.5,
-                        solidify: true,
-                        preprocess: true,
-                    },
-                    self.reusable_buffers.take(),
-                );
-                self.reusable_buffers = Some(reuse);
-
-                let (sdf_w, sdf_h) = (esdfer_sdf_img.width(), esdfer_sdf_img.height());
-                let Some(allocation) = self
-                    .atlas
-                    .allocate(etagere::size2(sdf_w as i32, sdf_h as i32))
-                else {
-                    panic!(
-                        "could not find place in atlas {:?} anymore for glyph {ch} with size {sdf_w}x{sdf_h}",
-                        self.atlas.size()
+                let alloc_id: etagere::AllocId;
+                let (pos_x, pos_y, size_x, size_y): (usize, usize, usize, usize);
+                if self.settings.sdf_radius == 0.0 {
+                    // just copy grey img into atlas, but allocate padding in atlas as well
+                    size_x = f_metrics.width as usize + 2 * pad as usize;
+                    size_y = f_metrics.height as usize + 2 * pad as usize;
+                    let allocation = self
+                        .atlas
+                        .allocate(etagere::size2(size_x as i32, size_y as i32))
+                        .expect("font atlas is too small");
+                    alloc_id = allocation.id;
+                    pos_x = allocation.rectangle.min.x as usize;
+                    pos_y = allocation.rectangle.min.y as usize;
+                    copy_gray_into_atlas(
+                        &mut self.atlas_image,
+                        self.settings.atlas_width as usize,
+                        &rasterized_buf,
+                        f_metrics.width,
+                        f_metrics.height,
+                        pos_x + pad as usize,
+                        pos_y + pad as usize,
                     );
-                };
-                // copy image into atlas image
-                copy_sdf_into_atlas(
-                    &mut self.atlas_image,
-                    self.settings.atlas_width as usize,
-                    &esdfer_sdf_img,
-                    allocation.rectangle.min.x as usize,
-                    allocation.rectangle.min.y as usize,
-                );
-                self.has_atlas_image_changed = true;
+                } else {
+                    // generate sdf and put it into the atlas
+                    let mut gray_for_sdfer = sdfer::Image2d::<sdfer::Unorm8>::from_storage(
+                        f_metrics.width,
+                        f_metrics.height,
+                        rasterized_buf
+                            .into_iter()
+                            .map(|e| sdfer::Unorm8::from_bits(e))
+                            .collect::<Vec<sdfer::Unorm8>>(),
+                    );
+                    let (esdfer_sdf_img, reuse) = sdfer::esdt::glyph_to_sdf(
+                        &mut gray_for_sdfer,
+                        sdfer::esdt::Params {
+                            pad: self.settings.pad_size as usize,
+                            radius: self.settings.sdf_radius,
+                            cutoff: 0.5,
+                            solidify: true,
+                            preprocess: true,
+                        },
+                        self.reusable_buffers.take(),
+                    );
+                    self.reusable_buffers = Some(reuse);
+                    (size_x, size_y) = (esdfer_sdf_img.width(), esdfer_sdf_img.height());
+                    let allocation = self
+                        .atlas
+                        .allocate(etagere::size2(size_x as i32, size_y as i32))
+                        .expect("font atlas is too small");
+                    alloc_id = allocation.id;
+                    pos_x = allocation.rectangle.min.x as usize;
+                    pos_y = allocation.rectangle.min.y as usize;
+                    copy_sdf_into_atlas(
+                        &mut self.atlas_image,
+                        self.settings.atlas_width as usize,
+                        &esdfer_sdf_img,
+                        pos_x,
+                        pos_y,
+                    );
+                }
 
-                let uv = Aabb {
-                    x_min: allocation.rectangle.min.x as f32 / self.settings.atlas_width as f32,
-                    y_min: allocation.rectangle.min.y as f32 / self.settings.atlas_height as f32,
-                    x_max: allocation.rectangle.max.x as f32 / self.settings.atlas_width as f32,
-                    y_max: allocation.rectangle.max.y as f32 / self.settings.atlas_height as f32,
-                };
-
+                // adding the padding should not have any influence on the layout algorithm, only on the size of the quads rendered
+                let atlas_w = self.settings.atlas_width as f32;
+                let atlas_h = self.settings.atlas_height as f32;
                 info = GlyphInfo {
-                    metrics,
                     kind: GlyphKind::Default,
-                    uv,
+                    xmin: f_metrics.bounds.xmin - pad as f32,
+                    ymin: f_metrics.bounds.ymin - pad as f32,
+                    width: f_metrics.bounds.width + (2 * pad) as f32,
+                    height: f_metrics.bounds.height + (2 * pad) as f32,
+                    advance: f_metrics.advance_width,
+                    uv_min_x: pos_x as f32 / atlas_w,
+                    uv_min_y: pos_y as f32 / atlas_h,
+                    uv_max_x: (pos_x + size_x) as f32 / atlas_w,
+                    uv_max_y: (pos_y + size_y) as f32 / atlas_h,
                 };
+                self.has_atlas_image_changed = true;
                 vacant_entry.insert(SdfGlyph {
                     info,
-                    _alloc_id: Some(allocation.id),
+                    _alloc_id: Some(alloc_id),
                 });
             }
         }
@@ -394,17 +403,29 @@ fn copy_sdf_into_atlas(
     alloc_x: usize,
     alloc_y: usize,
 ) {
-    // for y in 0..10 {
-    //     for x in 0..10 {
-    //         atlas[y * atlas_w + x] = 127;
-    //     }
-    // }
-
     let (sdf_w, sdf_h) = (sdf.width(), sdf.height());
     for y in 0..sdf_h {
         for x in 0..sdf_w {
             atlas[atlas_w * (y + alloc_y) + (x + alloc_x)] = sdf[(x, y)].to_bits();
-            //
+        }
+    }
+}
+
+fn copy_gray_into_atlas(
+    atlas: &mut [u8],
+    atlas_w: usize,
+    gray: &[u8],
+    gray_w: usize,
+    gray_h: usize,
+    alloc_x: usize,
+    alloc_y: usize,
+) {
+    for y in 0..gray_h {
+        let line = &gray[y * gray_w..y * gray_w + gray_w];
+        let atlas_line = &mut atlas
+            [(alloc_y + y) * atlas_w + alloc_x..(alloc_y + y) * atlas_w + alloc_x + gray_w];
+        unsafe {
+            std::ptr::copy_nonoverlapping(line.as_ptr(), atlas_line.as_mut_ptr(), gray_w);
         }
     }
 }
@@ -415,62 +436,43 @@ pub fn static_bytes<'a>(bytes: &'a [u8]) -> &'static [u8] {
 
 struct SdfGlyph {
     info: GlyphInfo,
-    // rasterized_image: image::GrayImage,
-    // sdf_image: image::GrayImage,
     _alloc_id: Option<etagere::AllocId>, // saved here for adding remove glyph functionality later.
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct GlyphInfo {
     kind: GlyphKind,
-    metrics: GlyphMetrics,
-    uv: Aabb,
-}
-const UNKNOWN_GLYPH: GlyphInfo = GlyphInfo {
-    kind: GlyphKind::NotContained,
-    metrics: GlyphMetrics {
-        xmin: 0.0,
-        ymin: 0.0,
-        width: 0.0,
-        height: 0.0,
-        advance: 0.0,
-    },
-    uv: Aabb {
-        x_min: 0.0,
-        y_min: 0.0,
-        x_max: 0.0,
-        y_max: 0.0,
-    },
-};
-
-#[repr(C)]
-#[derive(Debug, Clone, Copy, Default)]
-pub struct GlyphMetrics {
     pub xmin: f32,
     pub ymin: f32,
     pub width: f32,
     pub height: f32,
-    // todo: kerning between glyph pairs
-    // advance of the glyph in x directon
     pub advance: f32,
+    pub uv_min_x: f32,
+    pub uv_min_y: f32,
+    pub uv_max_x: f32,
+    pub uv_max_y: f32,
 }
+const UNKNOWN_GLYPH: GlyphInfo = GlyphInfo {
+    kind: GlyphKind::NotContained,
+    xmin: 0.0,
+    ymin: 0.0,
+    width: 0.0,
+    height: 0.0,
+    advance: 0.0,
+    uv_min_x: 0.0,
+    uv_min_y: 0.0,
+    uv_max_x: 0.0,
+    uv_max_y: 0.0,
+};
 
 #[repr(u8)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub enum GlyphKind {
+    #[default]
     NotContained = 0,
     Whitespace = 1,
     Default = 2,
-}
-
-#[repr(C)]
-#[derive(Debug, Clone, Copy, Default)]
-pub struct Aabb {
-    pub x_min: f32,
-    pub y_min: f32,
-    pub x_max: f32,
-    pub y_max: f32,
 }
 
 /// Metrics associated with line positioning.
