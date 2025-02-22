@@ -4,7 +4,8 @@ import "core:fmt"
 import "core:os"
 import "vendor:stb/image"
 
-foreign import __lib "./sdffont/target/release/libsdffont.so"
+when ODIN_OS == .Linux do foreign import __lib "./sdffont/target/release/libsdffont.so"
+when ODIN_OS == .Windows do foreign import __lib "./sdffont/target/release/sdffont.dll"
 foreign __lib {
 	add :: proc(a: f32, b: f32) -> f32 ---
 	font_create :: proc(bytes: []u8, settings: SdfFontSettings = SDF_FONT_SETTINGS_DEFAULT, error: ^string = nil) -> SdfFont ---

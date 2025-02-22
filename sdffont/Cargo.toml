@@ -17,5 +17,4 @@ crate-type = ["cdylib"]
 [profile.release]
 lto = true        # does a lot for binary size
 codegen-units = 1
-# panic = "abort"   # does not do much for binary size
-opt-level = 3 # does not do much for binary size
+opt-level = 3     # does not do too much for binary size
