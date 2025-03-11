@@ -2,12 +2,6 @@ use std::collections::hash_map::Entry;
 use ttf_parser::gpos::{PairAdjustment, PositioningSubtable};
 
 #[unsafe(no_mangle)]
-pub extern "C" fn add(a: i32, b: i32) -> i32 {
-    println!("Yyoyo");
-    a + b
-}
-
-#[unsafe(no_mangle)]
 pub extern "C" fn font_create(
     bytes: RawSlice,
     settings: SdfFontSettings,
@@ -210,7 +204,6 @@ impl SdfFont {
             settings.atlas_height as i32,
         ));
         let atlas_image: Vec<u8> = vec![0; (settings.atlas_width * settings.atlas_height) as usize];
-        dbg!(line_metrics);
         // font.horizontal_kern_indexed(left, right, px)
         let mut font = SdfFont {
             _font_bytes: font_bytes, // just to ensure that they live as long as the face.

@@ -7,7 +7,6 @@ import "vendor:stb/image"
 when ODIN_OS == .Linux do foreign import __lib "./sdffont/target/release/libsdffont.so"
 when ODIN_OS == .Windows do foreign import __lib "./sdffont/target/release/sdffont.dll"
 foreign __lib {
-	add :: proc(a: f32, b: f32) -> f32 ---
 	font_create :: proc(bytes: []u8, settings: SdfFontSettings = SDF_FONT_SETTINGS_DEFAULT, error: ^string = nil) -> SdfFont ---
 	font_free :: proc(font: SdfFont) ---
 	font_has_atlas_image_changed :: proc(font: SdfFont) -> bool ---
