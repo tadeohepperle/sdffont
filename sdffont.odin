@@ -1,8 +1,8 @@
 package sdffont
 
 // when ODIN_OS == .Linux do foreign import __lib "./sdffont/target/release/libsdffont.so"
-when ODIN_OS == .Linux do foreign import __lib "./sdffont/target/release/libsdffont.so"
-when ODIN_OS == .Windows do foreign import __lib "./sdffont/target/release/sdffont.dll.lib"
+when ODIN_OS == .Linux do foreign import __lib "./lib/libsdffont.so"
+when ODIN_OS == .Windows do foreign import __lib "./lib/sdffont.dll.lib"
 foreign __lib {
 	font_create :: proc(bytes: []u8, settings: SdfFontSettings = SDF_FONT_SETTINGS_DEFAULT, error: ^string = nil) -> SdfFont ---
 	font_free :: proc(font: SdfFont) ---
@@ -18,7 +18,7 @@ AtlasImage :: struct {
 	bytes: []u8, // single channel grey image with 1 byte per pixel
 }
 
-SdfFont :: ^struct {} // opaque ptr, in Rust this is Box<SdfFont>
+SdfFont :: ^struct{} // opaque ptr, in Rust this is Box<SdfFont>
 
 SdfFontSettings :: struct {
 	/// fontsize the sdf is rasterized at. 32 or 64 is recommended.

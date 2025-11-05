@@ -28,5 +28,5 @@ odin run .
 ### Run Zig example:
 
 ```sh
-
+zig build run
 ```
