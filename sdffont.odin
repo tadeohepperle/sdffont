@@ -1,11 +1,8 @@
 package sdffont
 
-import "core:fmt"
-import "core:os"
-import "vendor:stb/image"
-
 // when ODIN_OS == .Linux do foreign import __lib "./sdffont/target/release/libsdffont.so"
-foreign import __lib "./sdffont/target/release/sdffont.dll.lib"
+when ODIN_OS == .Linux do foreign import __lib "./sdffont/target/release/libsdffont.so"
+when ODIN_OS == .Windows do foreign import __lib "./sdffont/target/release/sdffont.dll.lib"
 foreign __lib {
 	font_create :: proc(bytes: []u8, settings: SdfFontSettings = SDF_FONT_SETTINGS_DEFAULT, error: ^string = nil) -> SdfFont ---
 	font_free :: proc(font: SdfFont) ---
@@ -41,30 +38,6 @@ SDF_FONT_SETTINGS_DEFAULT :: SdfFontSettings {
 	sdf_radius                     = 16,
 	atlas_size                     = {1024, 1024},
 	initialize_with_default_glyphs = true,
-}
-
-main :: proc() {
-	bytes, success := os.read_entire_file("./MarkoOne-Regular.default.ttf")
-	assert(success)
-	errstr: string
-	font := font_create(bytes, SDF_FONT_SETTINGS_DEFAULT, &errstr)
-	fmt.println(errstr)
-	fmt.println(rawptr(font))
-
-	img := font_get_atlas_image(font)
-	image.write_bmp("font_before.bmp", i32(img.size.x), i32(img.size.y), 1, raw_data(img.bytes))
-	fmt.println(font_get_or_add_glyph(font, 'Å'))
-	fmt.println(font_get_or_add_glyph(font, '§'))
-
-	image.write_bmp("font_after.bmp", i32(img.size.x), i32(img.size.y), 1, raw_data(img.bytes))
-	fmt.println(font_get_horizontal_kerning(font, 'V', 'i'))
-
-	fmt.println("\n\n")
-	fmt.println("'T':", font_get_or_add_glyph(font, 'T'))
-	fmt.println("'p':", font_get_or_add_glyph(font, 'p'))
-	fmt.println(font_get_line_metrics(font))
-	// os.read_entire_file()
-	// fmt.println("hello", add(3, 4))
 }
 
 LineMetrics :: struct {
