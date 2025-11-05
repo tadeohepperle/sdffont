@@ -4,8 +4,8 @@ import "core:fmt"
 import "core:os"
 import "vendor:stb/image"
 
-when ODIN_OS == .Linux do foreign import __lib "./sdffont/target/release/libsdffont.so"
-when ODIN_OS == .Windows do foreign import __lib "./sdffont/target/release/sdffont.dll"
+// when ODIN_OS == .Linux do foreign import __lib "./sdffont/target/release/libsdffont.so"
+foreign import __lib "./sdffont/target/release/sdffont.dll.lib"
 foreign __lib {
 	add :: proc(a: f32, b: f32) -> f32 ---
 	font_create :: proc(bytes: []u8, settings: SdfFontSettings = SDF_FONT_SETTINGS_DEFAULT, error: ^string = nil) -> SdfFont ---
@@ -45,8 +45,7 @@ SDF_FONT_SETTINGS_DEFAULT :: SdfFontSettings {
 }
 
 main :: proc() {
-
-	bytes, success := os.read_entire_file("./LuxuriousRoman-Regular.ttf")
+	bytes, success := os.read_entire_file("./MarkoOne-Regular.default.ttf")
 	assert(success)
 	errstr: string
 	font := font_create(bytes, SDF_FONT_SETTINGS_DEFAULT, &errstr)
