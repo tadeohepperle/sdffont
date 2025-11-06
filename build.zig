@@ -3,7 +3,7 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
-    const sdffont_mod = b.addModule("sdffont", .{
+    const root_mod = b.addModule("root", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
@@ -20,11 +20,11 @@ pub fn build(b: *std.Build) void {
     const lib_path = b.path(lib_path_string);
     const so_install_file = b.addInstallLibFile(lib_path, "sdffont.so");
     b.getInstallStep().dependOn(&so_install_file.step);
-    sdffont_mod.addObjectFile(lib_path);
+    root_mod.addObjectFile(lib_path);
 
-    sdffont_mod.addLibraryPath(b.path("lib"));
-    sdffont_mod.linkSystemLibrary("sdffont", .{});
-    sdffont_mod.link_libc = true;
+    root_mod.addLibraryPath(b.path("lib"));
+    root_mod.linkSystemLibrary("sdffont", .{});
+    root_mod.link_libc = true;
 
     const exe = b.addExecutable(.{
         .name = "example",
@@ -33,7 +33,7 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
             .imports = &.{
-                .{ .name = "sdffont", .module = sdffont_mod },
+                .{ .name = "sdffont", .module = root_mod },
             },
         }),
     });
